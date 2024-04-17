@@ -6,26 +6,34 @@ import (
     "net"
     "fmt"
     "sync"
+    "errors"
     "strings"
 )
 
 type tcp struct {
-    lock sync.Mutex
-    src  string
-    dsts []string
+    lock   sync.Mutex
+    addr   string
+    proxys []string
 }
 
-func New(src, dst string) *tcp {
-    tp := &tcp{
-        src:  src,
-        dsts: strings.Split(dst, ","),
+func New(addr, proxy string) (*tcp, error) {
+    if addr == "" {
+        return nil, errors.New("need addr flag")
+    }
+    if proxy == "" {
+        return nil, errors.New("need proxy flag")
     }
 
-    return tp
+    tp := &tcp{
+        addr:   addr,
+        proxys: strings.Split(proxy, ","),
+    }
+
+    return tp, nil
 }
 
 func (p *tcp) Server() {
-    listen, err := net.Listen("tcp", p.src)
+    listen, err := net.Listen("tcp", p.addr)
     if err != nil {
         fmt.Println(err)
         return
@@ -46,14 +54,14 @@ func (p *tcp) Server() {
 
 func (p *tcp) handle(sconn net.Conn) {
     defer sconn.Close()
-    dst, ok := p.selectDst()
+    proxy, ok := p.selectProxy()
     if !ok {
         return
     }
 
-    dconn, err := net.Dial("tcp", dst)
+    dconn, err := net.Dial("tcp", proxy)
     if err != nil {
-        log.Printf("dial %v fail: %v\n", dst, err)
+        log.Printf("dial %v fail: %v\n", proxy, err)
         return
     }
     defer dconn.Close()
@@ -64,7 +72,7 @@ func (p *tcp) handle(sconn net.Conn) {
     go func(sconn net.Conn, dconn net.Conn, exit chan bool) {
         _, err := io.Copy(dconn, sconn)
         if err != nil {
-            log.Printf("give message to %v fail: %v\n", dst, err)
+            log.Printf("give message to %v fail: %v\n", proxy, err)
             ExitChan <- true
         }
     }(sconn, dconn, ExitChan)
@@ -73,7 +81,7 @@ func (p *tcp) handle(sconn net.Conn) {
     go func(sconn net.Conn, dconn net.Conn, exit chan bool) {
         _, err := io.Copy(sconn, dconn)
         if err != nil {
-            log.Printf("get message fail from %v: %v\n", dst, err)
+            log.Printf("get message fail from %v: %v\n", proxy, err)
             ExitChan <- true
         }
     }(sconn, dconn, ExitChan)
@@ -82,15 +90,15 @@ func (p *tcp) handle(sconn net.Conn) {
 }
 
 // ip 轮询
-func (p *tcp) selectDst() (string, bool) {
+func (p *tcp) selectProxy() (string, bool) {
     p.lock.Lock()
     defer p.lock.Unlock()
 
-    if len(p.dsts) < 1 {
+    if len(p.proxys) < 1 {
         return "", false
     }
 
-    dst := p.dsts[0]
-    p.dsts = append(p.dsts[1:], dst)
-    return dst, true
+    proxy := p.proxys[0]
+    p.proxys = append(p.proxys[1:], proxy)
+    return proxy, true
 }

@@ -9,18 +9,24 @@ import (
 
     "github.com/deatil/go-tap/ws"
     "github.com/deatil/go-tap/tcp"
+    "github.com/deatil/go-tap/http"
 )
 
-const Version = "v0.0.1"
+const Version = "v0.0.2"
 
-// > go run main.go --type=tcp --src=0.0.0.0:7755 --dst=127.0.0.5:233
-// > go run main.go --type=ws --src=0.0.0.0:8082 --dst=http://127.0.0.1:8002
-// > ./proxy --type=tcp --src=0.0.0.0:7755 --dst=127.0.0.5:233
+type IServer interface {
+    Server()
+}
+
+// > go run main.go --type=tcp --addr=0.0.0.0:7755 --proxy=127.0.0.5:233
+// > go run main.go --type=ws --addr=0.0.0.0:8082 --proxy=http://127.0.0.1:8002
+// > go run main.go --type=http --addr=0.0.0.0:8083
+// > ./proxy --type=tcp --addr=0.0.0.0:7755 --proxy=127.0.0.5:233
 func main() {
     app := &cli.App{
         Name:      "proxy",
         Usage:     "proxy server",
-        UsageText: "--type=tcp --dst=127.0.0.1:9999,127.0.0.2:9999 [--src=0.0.0.0:7755]",
+        UsageText: "--type=tcp --proxy=127.0.0.1:9999,127.0.0.2:9999 [--addr=0.0.0.0:7755]",
         Version:   Version,
         EnableBashCompletion: true,
         Flags: []cli.Flag{
@@ -37,38 +43,16 @@ func main() {
                 Hidden:  false,
             },
             &cli.StringFlag{
-                Name:   "src",
+                Name:   "addr",
                 Hidden: false,
             },
             &cli.StringFlag{
-                Name:   "dst",
+                Name:   "proxy",
                 Hidden: false,
             },
         },
         Action: func(ctx *cli.Context) error {
-            src := ctx.String("src")
-            dst := ctx.String("dst")
-            if dst == "" {
-                fmt.Println("need dst flag")
-                return nil
-            }
-
-            if src == "" {
-                dst = "0.0.0.0:7755"
-            }
-
-            log.Println("listen at:", src)
-
-            typ := ctx.String("type")
-            switch typ {
-                case "tcp":
-                    tcp.New(src, dst).Server()
-                case "ws":
-                    ws.New(src, dst).Server()
-                default:
-                    log.Println("type unsupported")
-            }
-
+            runProxy(ctx)
             return nil
         },
         Commands: []*cli.Command{
@@ -77,7 +61,7 @@ func main() {
     }
 
     if err := app.Run(os.Args); err != nil {
-        log.Println("ERROR: %s\n\n", err)
+        log.Printf("ERROR: %s\n\n", err)
         os.Exit(1)
     }
 }
@@ -95,4 +79,37 @@ var VersionCommand = &cli.Command{
 
         return nil
     },
+}
+
+func runProxy(ctx *cli.Context) {
+    addr := ctx.String("addr")
+    proxy := ctx.String("proxy")
+    if addr == "" {
+        addr = "0.0.0.0:7755"
+    }
+
+    var s IServer
+    var err error
+
+    typ := ctx.String("type")
+    switch typ {
+        case "tcp":
+            s, err = tcp.New(addr, proxy)
+        case "ws":
+            s, err = ws.New(addr, proxy)
+        case "http":
+            s, err = http.New(addr)
+        default:
+            log.Printf("%s unsupported", typ)
+            return
+    }
+
+    if err != nil {
+        log.Println(s)
+        return
+    }
+
+    log.Printf("[%s] listen at %s", typ, addr)
+
+    s.Server()
 }

@@ -2,31 +2,39 @@ package ws
 
 import (
     "log"
+    "errors"
     "net/url"
     "net/http"
     "net/http/httputil"
 )
 
 type websocket struct {
-    src string
-    dst string
+    addr  string
+    proxy string
 }
 
-func New(src, dst string) *websocket {
-    ws := &websocket{
-        src: src,
-        dst: dst,
+func New(addr, proxy string) (*websocket, error) {
+    if addr == "" {
+        return nil, errors.New("need addr flag")
+    }
+    if proxy == "" {
+        return nil, errors.New("need proxy flag")
     }
 
-    return ws
+    ws := &websocket{
+        addr:  addr,
+        proxy: proxy,
+    }
+
+    return ws, nil
 }
 
 func (w *websocket) Server() {
-    url, err := url.Parse(w.dst)
+    url, err := url.Parse(w.proxy)
     if err != nil {
         log.Println(err)
     }
 
     proxy := httputil.NewSingleHostReverseProxy(url)
-    http.ListenAndServe(w.src, proxy)
+    http.ListenAndServe(w.addr, proxy)
 }
