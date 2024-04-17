@@ -14,7 +14,7 @@ git clone github.com/deatil/go-tap
 2. 编译运行
 
 ```cmd
-go run main.go --type=tcp --src=0.0.0.0:7755 --dst=127.0.0.5:233
+go run main.go --type=tcp --addr=0.0.0.0:7755 --proxy=127.0.0.5:233
 ```
 
 
